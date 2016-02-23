@@ -56,6 +56,10 @@ public class GlucoseManager extends BleManager<GlucoseManagerCallbacks> {
 	/** Record Access Control Point characteristic UUID */
 	private final static UUID RACP_CHARACTERISTIC = UUID.fromString("00002A52-0000-1000-8000-00805f9b34fb");
 
+    public static final UUID CURRENT_TIME = UUID.fromString("00001805-0000-1000-8000-00805f9b34fb");
+
+    public static final UUID CURRENT_TIME_CHARACTERISTIC = UUID.fromString("00002A2B-0000-1000-8000-00805f9b34fb");
+
 	private final static int OP_CODE_REPORT_STORED_RECORDS = 1;
 	private final static int OP_CODE_DELETE_STORED_RECORDS = 2;
 	private final static int OP_CODE_ABORT_OPERATION = 3;
@@ -97,6 +101,7 @@ public class GlucoseManager extends BleManager<GlucoseManagerCallbacks> {
 	private BluetoothGattCharacteristic mGlucoseMeasurementCharacteristic;
 	private BluetoothGattCharacteristic mGlucoseMeasurementContextCharacteristic;
 	private BluetoothGattCharacteristic mRecordAccessControlPointCharacteristic;
+    private BluetoothGattCharacteristic mDateTimeCharacteristic;
 
 	private final SparseArray<GlucoseRecord> mRecords = new SparseArray<>();
 	private boolean mAbort;
@@ -134,6 +139,8 @@ public class GlucoseManager extends BleManager<GlucoseManagerCallbacks> {
 			if (mGlucoseMeasurementContextCharacteristic != null)
 				requests.push(Request.newEnableNotificationsRequest(mGlucoseMeasurementContextCharacteristic));
 			requests.push(Request.newEnableIndicationsRequest(mRecordAccessControlPointCharacteristic));
+//            if (mDateTimeCharacteristic != null)
+//                requests.push(setDateTime());
 			return requests;
 		}
 
@@ -145,7 +152,11 @@ public class GlucoseManager extends BleManager<GlucoseManagerCallbacks> {
 				mGlucoseMeasurementContextCharacteristic = service.getCharacteristic(GM_CONTEXT_CHARACTERISTIC);
 				mRecordAccessControlPointCharacteristic = service.getCharacteristic(RACP_CHARACTERISTIC);
 			}
-			return mGlucoseMeasurementCharacteristic != null && mRecordAccessControlPointCharacteristic != null;
+            final BluetoothGattService mCurrentTime = gatt.getService(CURRENT_TIME);
+            if (mCurrentTime != null) {
+                mDateTimeCharacteristic = mCurrentTime.getCharacteristic(CURRENT_TIME_CHARACTERISTIC);
+            }
+            return mGlucoseMeasurementCharacteristic != null && mRecordAccessControlPointCharacteristic != null;
 		}
 
 		@Override
@@ -158,7 +169,8 @@ public class GlucoseManager extends BleManager<GlucoseManagerCallbacks> {
 			mGlucoseMeasurementCharacteristic = null;
 			mGlucoseMeasurementContextCharacteristic = null;
 			mRecordAccessControlPointCharacteristic = null;
-		}
+            mDateTimeCharacteristic = null;
+        }
 
 		@Override
 		public void onCharacteristicNotified(BluetoothGatt gatt, BluetoothGattCharacteristic characteristic) {
@@ -585,4 +597,30 @@ public class GlucoseManager extends BleManager<GlucoseManagerCallbacks> {
 		setOpCode(characteristic, OP_CODE_DELETE_STORED_RECORDS, OPERATOR_ALL_RECORDS);
 		writeCharacteristic(characteristic);
 	}
+
+    /**
+     * 设置时间
+     */
+    private Request setDateTime() {
+        Calendar calendar = Calendar.getInstance();
+        int year = calendar.get(Calendar.YEAR);
+        int month = calendar.get(Calendar.MONTH) + 1;
+        int day = calendar.get(Calendar.DAY_OF_MONTH);
+        int hour = calendar.get(Calendar.HOUR_OF_DAY);
+        int min = calendar.get(Calendar.MINUTE);
+        int sec = calendar.get(Calendar.SECOND);
+
+        String strHexYear = "0" + Integer.toHexString(year);
+
+        byte[] array = new byte[7];
+        array[0] = (byte) Integer.parseInt(strHexYear.substring(2), 16);
+        array[1] = (byte) Integer.parseInt(strHexYear.substring(0, 2), 16);
+        array[2] = (byte) Integer.parseInt(Integer.toHexString(month), 16);
+        array[3] = (byte) Integer.parseInt(Integer.toHexString(day), 16);
+        array[4] = (byte) Integer.parseInt(Integer.toHexString(hour), 16);
+        array[5] = (byte) Integer.parseInt(Integer.toHexString(min), 16);
+        array[6] = (byte) Integer.parseInt(Integer.toHexString(0), 16);
+
+        return Request.newWriteRequest(mDateTimeCharacteristic, array);
+    }
 }
