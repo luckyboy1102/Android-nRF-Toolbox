@@ -130,6 +130,16 @@
 			</intent-filter>
 		</activity>
 		<activity
+			android:name="no.nordicsemi.android.nrftoolbox.bpm.BPMRacpActivity"
+			android:icon="@drawable/ic_bpm_feature"
+			android:label="BPM RACP" >
+			<intent-filter>
+				<action android:name="android.intent.action.MAIN" />
+
+				<category android:name="no.nordicsemi.android.nrftoolbox.LAUNCHER" />
+			</intent-filter>
+		</activity>
+		<activity
 			android:name="no.nordicsemi.android.nrftoolbox.gls.GlucoseActivity"
 			android:icon="@drawable/ic_glucose_feature"
 			android:label="@string/gls_feature_title" >

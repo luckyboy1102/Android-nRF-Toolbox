@@ -29,6 +29,7 @@ import android.os.Handler;
 import android.util.SparseArray;
 
 import java.util.Calendar;
+import java.util.Date;
 import java.util.LinkedList;
 import java.util.Queue;
 import java.util.UUID;
@@ -402,6 +403,33 @@ public class GlucoseManager extends BleManager<GlucoseManagerCallbacks> {
 			}
 		}
 	}
+
+    private void setOpCodeFilter(final BluetoothGattCharacteristic characteristic, final int opCode, final int operator, final Integer... params) {
+        final int size = 2 + ((params.length > 0) ? 1 : 0) + params.length * 2; // 1 byte for opCode, 1 for operator, 1 for filter type (if parameters exists) and 2 for each parameter
+        characteristic.setValue(new byte[size]);
+
+        // write the operation code
+        int offset = 0;
+        characteristic.setValue(opCode, BluetoothGattCharacteristic.FORMAT_UINT8, offset);
+        offset += 1;
+
+        // write the operator. This is always present but may be equal to OPERATOR_NULL
+        characteristic.setValue(operator, BluetoothGattCharacteristic.FORMAT_UINT8, offset);
+        offset += 1;
+
+        // if parameters exists, append them. Parameters should be sorted from minimum to maximum. Currently only one or two params are allowed
+        if (params.length > 0) {
+            // our implementation use only sequence number as a filer type
+            characteristic.setValue(FILTER_TYPE_USER_FACING_TIME, BluetoothGattCharacteristic.FORMAT_UINT8, offset);
+            offset += 1;
+
+            for (final Integer i : params) {
+                characteristic.setValue(i, BluetoothGattCharacteristic.FORMAT_UINT8, offset);
+                offset += 1;
+            }
+        }
+    }
+
 	/**
 	 * Returns all records as a sparse array where sequence number is the key.
 	 *
@@ -494,6 +522,38 @@ public class GlucoseManager extends BleManager<GlucoseManagerCallbacks> {
 			// Info:
 			// Operators OPERATOR_LESS_THEN_OR_EQUAL and OPERATOR_RANGE are not supported by Nordic Semiconductor Glucose Service in SDK 4.4.2.
 		}
+	}
+
+	public void getSpecificRecord(Date date) {
+		if (mRecordAccessControlPointCharacteristic == null)
+			return;
+
+		clear();
+		mCallbacks.onOperationStarted();
+
+        Calendar calendar = Calendar.getInstance();
+        calendar.setTime(date);
+        int year = calendar.get(Calendar.YEAR);
+        int month = calendar.get(Calendar.MONTH) + 1;
+        int day = calendar.get(Calendar.DAY_OF_MONTH);
+        int hour = calendar.get(Calendar.HOUR_OF_DAY);
+        int min = calendar.get(Calendar.MINUTE);
+        int sec = calendar.get(Calendar.SECOND);
+
+        String strHexYear = "0" + Integer.toHexString(year);
+
+        Integer[] array = new Integer[7];
+        array[0] = Integer.parseInt(strHexYear.substring(2), 16);
+        array[1] = Integer.parseInt(strHexYear.substring(0, 2), 16);
+        array[2] = Integer.parseInt(Integer.toHexString(month), 16);
+        array[3] = Integer.parseInt(Integer.toHexString(day), 16);
+        array[4] = Integer.parseInt(Integer.toHexString(hour), 16);
+        array[5] = Integer.parseInt(Integer.toHexString(min), 16);
+        array[6] = Integer.parseInt(Integer.toHexString(0), 16);
+
+		final BluetoothGattCharacteristic characteristic = mRecordAccessControlPointCharacteristic;
+        setOpCodeFilter(characteristic, OP_CODE_REPORT_STORED_RECORDS, OPERATOR_GREATER_THEN_OR_EQUAL, array);
+        writeCharacteristic(characteristic);
 	}
 
 	/**

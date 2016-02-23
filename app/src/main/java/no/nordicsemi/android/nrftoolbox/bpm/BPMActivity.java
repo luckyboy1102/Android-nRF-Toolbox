@@ -168,4 +168,39 @@ public class BPMActivity extends BleProfileActivity implements BPMManagerCallbac
 			}
 		});
 	}
+
+	@Override
+	public void onDatasetChanged() {
+
+	}
+
+	@Override
+	public void onOperationStarted() {
+
+	}
+
+	@Override
+	public void onOperationCompleted() {
+
+	}
+
+	@Override
+	public void onOperationFailed() {
+
+	}
+
+	@Override
+	public void onOperationAborted() {
+
+	}
+
+	@Override
+	public void onOperationNotSupported() {
+
+	}
+
+	@Override
+	public void onNumberOfRecordsRequested(int value) {
+
+	}
 }

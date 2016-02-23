@@ -30,11 +30,13 @@ import android.widget.BaseExpandableListAdapter;
 import android.widget.PopupMenu;
 import android.widget.TextView;
 
+import java.util.Date;
 import java.util.UUID;
 
 import no.nordicsemi.android.nrftoolbox.R;
 import no.nordicsemi.android.nrftoolbox.profile.BleManager;
 import no.nordicsemi.android.nrftoolbox.profile.BleProfileExpandableListActivity;
+import no.nordicsemi.android.nrftoolbox.widget.DateTimePicker;
 
 // TODO The GlucoseActivity should be rewritten to use the service approach, like other do.
 public class GlucoseActivity extends BleProfileExpandableListActivity implements PopupMenu.OnMenuItemClickListener, GlucoseManagerCallbacks {
@@ -116,6 +118,14 @@ public class GlucoseActivity extends BleProfileExpandableListActivity implements
 			break;
 		case R.id.action_delete_all:
 			mGlucoseManager.deleteAllRecords();
+			break;
+		case R.id.action_greater_than:
+			new DateTimePicker(this, new DateTimePicker.OnDateSetListener() {
+				@Override
+				public void onDateSet(Date date) {
+					mGlucoseManager.getSpecificRecord(date);
+				}
+			}).show();
 			break;
 		}
 		return true;

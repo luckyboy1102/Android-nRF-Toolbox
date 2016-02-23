@@ -64,4 +64,18 @@ public interface BPMManagerCallbacks extends BleManagerCallbacks {
 	 *            the timestamp or <code>null</code>
 	 */
 	public void onTimestampRead(final Calendar calendar);
+
+	public void onDatasetChanged();
+
+	public void onOperationStarted();
+
+	public void onOperationCompleted();
+
+	public void onOperationFailed();
+
+	public void onOperationAborted();
+
+	public void onOperationNotSupported();
+
+	public void onNumberOfRecordsRequested(final int value);
 }
