@@ -56,9 +56,9 @@ public class GlucoseManager extends BleManager<GlucoseManagerCallbacks> {
 	/** Record Access Control Point characteristic UUID */
 	private final static UUID RACP_CHARACTERISTIC = UUID.fromString("00002A52-0000-1000-8000-00805f9b34fb");
 
-    public static final UUID CURRENT_TIME = UUID.fromString("00001805-0000-1000-8000-00805f9b34fb");
+    private static final UUID CURRENT_TIME = UUID.fromString("00001805-0000-1000-8000-00805f9b34fb");
 
-    public static final UUID CURRENT_TIME_CHARACTERISTIC = UUID.fromString("00002A2B-0000-1000-8000-00805f9b34fb");
+    private static final UUID CURRENT_TIME_CHARACTERISTIC = UUID.fromString("00002A2B-0000-1000-8000-00805f9b34fb");
 
 	private final static int OP_CODE_REPORT_STORED_RECORDS = 1;
 	private final static int OP_CODE_DELETE_STORED_RECORDS = 2;
@@ -417,7 +417,7 @@ public class GlucoseManager extends BleManager<GlucoseManagerCallbacks> {
 	}
 
     private void setOpCodeFilter(final BluetoothGattCharacteristic characteristic, final int opCode, final int operator, final Integer... params) {
-        final int size = 2 + ((params.length > 0) ? 1 : 0) + params.length * 2; // 1 byte for opCode, 1 for operator, 1 for filter type (if parameters exists) and 2 for each parameter
+        final int size = 2 + ((params.length > 0) ? 1 : 0) + params.length; // 1 byte for opCode, 1 for operator, 1 for filter type (if parameters exists) and 2 for each parameter
         characteristic.setValue(new byte[size]);
 
         // write the operation code

@@ -26,7 +26,7 @@ import android.bluetooth.BluetoothGattCharacteristic;
 import android.bluetooth.BluetoothGattService;
 import android.content.Context;
 import android.os.Handler;
-import android.util.SparseArray;
+import android.util.Log;
 
 import java.util.Calendar;
 import java.util.Date;
@@ -39,6 +39,7 @@ import no.nordicsemi.android.nrftoolbox.parser.BloodPressureMeasurementParser;
 import no.nordicsemi.android.nrftoolbox.parser.IntermediateCuffPressureParser;
 import no.nordicsemi.android.nrftoolbox.profile.BleManager;
 import no.nordicsemi.android.nrftoolbox.utility.DebugLogger;
+import no.nordicsemi.android.nrftoolbox.utility.ParserUtils;
 
 public class BPMManager extends BleManager<BPMManagerCallbacks> {
 	private static final String TAG = "BPMManager";
@@ -52,7 +53,12 @@ public class BPMManager extends BleManager<BPMManagerCallbacks> {
 	/** Record Access Control Point characteristic UUID */
 	private final static UUID RACP_CHARACTERISTIC = UUID.fromString("00002A52-0000-1000-8000-00805f9b34fb");
 
+	private static final UUID CURRENT_TIME = UUID.fromString("00001805-0000-1000-8000-00805f9b34fb");
+
+	private static final UUID CURRENT_TIME_CHARACTERISTIC = UUID.fromString("00002A2B-0000-1000-8000-00805f9b34fb");
+
 	private BluetoothGattCharacteristic mBPMCharacteristic, mICPCharacteristic, mRecordAccessControlPointCharacteristic;
+	private BluetoothGattCharacteristic mCurrentTimeCharacteristic;
 
 	private static BPMManager managerInstance = null;
 
@@ -94,7 +100,7 @@ public class BPMManager extends BleManager<BPMManagerCallbacks> {
 	 */
 	private final static int FILTER_TYPE_USER_FACING_TIME = 2;
 
-	private final SparseArray<BPMRecord> mRecords = new SparseArray<>();
+	private final LinkedList<BPMRecord> mRecords = new LinkedList<>();
 	private boolean mAbort;
 	private Handler mHandler;
 
@@ -129,6 +135,12 @@ public class BPMManager extends BleManager<BPMManagerCallbacks> {
 			if (mICPCharacteristic != null)
 				requests.push(Request.newEnableNotificationsRequest(mICPCharacteristic));
 			requests.push(Request.newEnableIndicationsRequest(mBPMCharacteristic));
+			if (mRecordAccessControlPointCharacteristic != null) {
+				requests.push(Request.newEnableIndicationsRequest(mRecordAccessControlPointCharacteristic));
+			}
+			if (mCurrentTimeCharacteristic != null) {
+				requests.push(setTime());
+			}
 			return requests;
 		}
 
@@ -139,6 +151,10 @@ public class BPMManager extends BleManager<BPMManagerCallbacks> {
 				mBPMCharacteristic = service.getCharacteristic(BPM_CHARACTERISTIC_UUID);
 				mICPCharacteristic = service.getCharacteristic(ICP_CHARACTERISTIC_UUID);
 				mRecordAccessControlPointCharacteristic = service.getCharacteristic(RACP_CHARACTERISTIC);
+			}
+			BluetoothGattService mCurrentTimeService = gatt.getService(CURRENT_TIME);
+			if (mCurrentTimeService != null) {
+				mCurrentTimeCharacteristic = mCurrentTimeService.getCharacteristic(CURRENT_TIME_CHARACTERISTIC);
 			}
 			return mBPMCharacteristic != null;
 		}
@@ -170,13 +186,19 @@ public class BPMManager extends BleManager<BPMManagerCallbacks> {
 			if (mLogSession != null)
 				Logger.a(mLogSession, BloodPressureMeasurementParser.parse(characteristic));
 
-			if (characteristic.getUuid().equals(ICP_CHARACTERISTIC_UUID)) {
+			if (characteristic.getUuid().equals(BPM_CHARACTERISTIC_UUID)) {
 				parseBPMValue(characteristic);
 			}
 
 			if (characteristic.getUuid().equals(RACP_CHARACTERISTIC)) {
 				processedRacp(characteristic);
 			}
+		}
+
+		@Override
+		protected void onCharacteristicWrite(BluetoothGatt gatt, BluetoothGattCharacteristic characteristic) {
+			super.onCharacteristicWrite(gatt, characteristic);
+			Log.d(TAG, ParserUtils.parse(characteristic));
 		}
 
 		private void parseBPMValue(final BluetoothGattCharacteristic characteristic) {
@@ -234,7 +256,10 @@ public class BPMManager extends BleManager<BPMManagerCallbacks> {
 			} else
 				mCallbacks.onPulseRateRead(-1.0f);
 
-			mCallbacks.onDatasetChanged();
+			if (BPM_CHARACTERISTIC_UUID.equals(characteristic.getUuid())) {
+				mRecords.add(record);
+				mCallbacks.onDatasetChanged();
+			}
 		}
 
 		private void processedRacp(BluetoothGattCharacteristic characteristic) {
@@ -299,7 +324,7 @@ public class BPMManager extends BleManager<BPMManagerCallbacks> {
 	 *
 	 * @return the records list
 	 */
-	public SparseArray<BPMRecord> getRecords() {
+	public LinkedList<BPMRecord> getRecords() {
 		return mRecords;
 	}
 
@@ -332,7 +357,7 @@ public class BPMManager extends BleManager<BPMManagerCallbacks> {
 		mCallbacks.onOperationStarted();
 
 		final BluetoothGattCharacteristic characteristic = mRecordAccessControlPointCharacteristic;
-		setOpCode(characteristic, OP_CODE_REPORT_NUMBER_OF_RECORDS, OPERATOR_ALL_RECORDS);
+		setOpCode(characteristic, OP_CODE_REPORT_STORED_RECORDS, OPERATOR_ALL_RECORDS);
 		writeCharacteristic(characteristic);
 	}
 
@@ -364,14 +389,14 @@ public class BPMManager extends BleManager<BPMManagerCallbacks> {
 		if (mRecords.size() == 0) {
 			getAllRecords();
 		} else {
-			mCallbacks.onOperationStarted();
-
-			// obtain the last sequence number
-			final int sequenceNumber = mRecords.keyAt(mRecords.size() - 1) + 1;
-
-			final BluetoothGattCharacteristic characteristic = mRecordAccessControlPointCharacteristic;
-			setOpCode(characteristic, OP_CODE_REPORT_STORED_RECORDS, OPERATOR_GREATER_THEN_OR_EQUAL, sequenceNumber);
-			writeCharacteristic(characteristic);
+//			mCallbacks.onOperationStarted();
+//
+//			// obtain the last sequence number
+//			final int sequenceNumber = mRecords.keyAt(mRecords.size() - 1) + 1;
+//
+//			final BluetoothGattCharacteristic characteristic = mRecordAccessControlPointCharacteristic;
+//			setOpCode(characteristic, OP_CODE_REPORT_STORED_RECORDS, OPERATOR_GREATER_THEN_OR_EQUAL, sequenceNumber);
+//			writeCharacteristic(characteristic);
 			// Info:
 			// Operators OPERATOR_LESS_THEN_OR_EQUAL and OPERATOR_RANGE are not supported by Nordic Semiconductor Glucose Service in SDK 4.4.2.
 		}
@@ -437,7 +462,7 @@ public class BPMManager extends BleManager<BPMManagerCallbacks> {
 		array[6] = Integer.parseInt(Integer.toHexString(0), 16);
 
 		final BluetoothGattCharacteristic characteristic = mRecordAccessControlPointCharacteristic;
-		setOpCodeFilter(characteristic, OP_CODE_REPORT_NUMBER_OF_RECORDS, OPERATOR_GREATER_THEN_OR_EQUAL, array);
+		setOpCodeFilter(characteristic, OP_CODE_REPORT_STORED_RECORDS, OPERATOR_GREATER_THEN_OR_EQUAL, array);
 		writeCharacteristic(characteristic);
 	}
 
@@ -481,7 +506,7 @@ public class BPMManager extends BleManager<BPMManagerCallbacks> {
 
 
 	private void setOpCodeFilter(final BluetoothGattCharacteristic characteristic, final int opCode, final int operator, final Integer... params) {
-		final int size = 2 + ((params.length > 0) ? 1 : 0) + params.length * 2; // 1 byte for opCode, 1 for operator, 1 for filter type (if parameters exists) and 2 for each parameter
+		final int size = 2 + ((params.length > 0) ? 1 : 0) + params.length; // 1 byte for opCode, 1 for operator, 1 for filter type (if parameters exists) and 2 for each parameter
 		characteristic.setValue(new byte[size]);
 
 		// write the operation code
@@ -504,5 +529,30 @@ public class BPMManager extends BleManager<BPMManagerCallbacks> {
 				offset += 1;
 			}
 		}
+	}
+
+	private Request setTime() {
+		Calendar calendar = Calendar.getInstance();
+		int year = calendar.get(Calendar.YEAR);
+		int month = calendar.get(Calendar.MONTH) + 1;
+		int day = calendar.get(Calendar.DAY_OF_MONTH);
+		int hour = calendar.get(Calendar.HOUR_OF_DAY);
+		int min = calendar.get(Calendar.MINUTE);
+
+		String strHexYear = "0" + Integer.toHexString(year);
+
+		byte[] array = new byte[10];
+		array[0] = (byte) Integer.parseInt(strHexYear.substring(2), 16);
+		array[1] = (byte) Integer.parseInt(strHexYear.substring(0, 2), 16);
+		array[2] = (byte) Integer.parseInt(Integer.toHexString(month), 16);
+		array[3] = (byte) Integer.parseInt(Integer.toHexString(day), 16);
+		array[4] = (byte) Integer.parseInt(Integer.toHexString(hour), 16);
+		array[5] = (byte) Integer.parseInt(Integer.toHexString(min), 16);
+		array[6] = (byte) Integer.parseInt(Integer.toHexString(0), 16);
+		array[7] = (byte) Integer.parseInt(Integer.toHexString(0), 16);
+		array[8] = (byte) Integer.parseInt(Integer.toHexString(0), 16);
+		array[9] = (byte) Integer.parseInt(Integer.toHexString(0), 16);
+
+		return Request.newWriteRequest(mCurrentTimeCharacteristic, array);
 	}
 }

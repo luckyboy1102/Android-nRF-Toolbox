@@ -120,7 +120,7 @@ public class BPMRacpActivity extends BleProfileActivity implements PopupMenu.OnM
     public boolean onMenuItemClick(MenuItem item) {
         switch (item.getItemId()) {
             case R.id.action_refresh:
-                mBPMManager.refreshRecords();
+                showToast("Same as all");
                 break;
             case R.id.action_first:
                 mBPMManager.getFirstRecord();
@@ -186,12 +186,12 @@ public class BPMRacpActivity extends BleProfileActivity implements PopupMenu.OnM
 
     @Override
     public void onOperationStarted() {
-        setOperationInProgress(true);
+//        setOperationInProgress(true);
     }
 
     @Override
     public void onOperationCompleted() {
-        setOperationInProgress(false);
+//        setOperationInProgress(false);
     }
 
     @Override
@@ -253,7 +253,8 @@ public class BPMRacpActivity extends BleProfileActivity implements PopupMenu.OnM
 
             BPMRecord record = getItem(position);
             holder.time.setText(getString(R.string.gls_timestamp, record.time));
-            holder.details.setText(record.systolic + " / " + record.diastolic + " " + record.pulseRate);
+            holder.details.setText(record.systolic + " / " + record.diastolic + " mmHg\n"
+                    + record.pulseRate + " /min");
 
             return convertView;
         }
