@@ -32,6 +32,7 @@
         android:id="@+id/time"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
+        android:gravity="center"
         android:textAppearance="?android:attr/textAppearanceListItem" />
 
     <TextView
@@ -42,6 +43,6 @@
         android:layout_centerVertical="true"
         android:gravity="center"
         android:text="122 / 82 mmHg\n80 /min"
-        android:textAppearance="?android:attr/textAppearanceSmall" />
+        android:textAppearance="?android:attr/textAppearanceMedium" />
 
 </RelativeLayout>

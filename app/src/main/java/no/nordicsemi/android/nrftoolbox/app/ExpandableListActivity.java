@@ -194,7 +194,7 @@ public class ExpandableListActivity extends ActionBarActivity implements
 	 */
 	@Override
 	public void onSupportContentChanged() {
-		super.onContentChanged();
+		super.onSupportContentChanged();
 		View emptyView = findViewById(R.id.empty);
 		mList = (ExpandableListView) findViewById(R.id.list);
 		if (mList == null) {

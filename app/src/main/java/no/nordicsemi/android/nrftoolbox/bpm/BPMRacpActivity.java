@@ -11,6 +11,7 @@ import android.widget.ListView;
 import android.widget.PopupMenu;
 import android.widget.TextView;
 
+import java.text.SimpleDateFormat;
 import java.util.Calendar;
 import java.util.Date;
 import java.util.UUID;
@@ -104,6 +105,8 @@ public class BPMRacpActivity extends BleProfileActivity implements PopupMenu.OnM
 
         ListView listView = (ListView) findViewById(R.id.list);
         listView.setAdapter(mAdapter = new BPMRecordsAdapter());
+
+
     }
 
     @Override
@@ -219,9 +222,11 @@ public class BPMRacpActivity extends BleProfileActivity implements PopupMenu.OnM
     public class BPMRecordsAdapter extends BaseAdapter {
 
         LayoutInflater inflater;
+        SimpleDateFormat sdf;
 
         public BPMRecordsAdapter() {
             inflater = getLayoutInflater();
+            sdf = new SimpleDateFormat("yyyy-MM-dd \nHH:mm:ss");
         }
 
         @Override
@@ -252,9 +257,9 @@ public class BPMRacpActivity extends BleProfileActivity implements PopupMenu.OnM
             }
 
             BPMRecord record = getItem(position);
-            holder.time.setText(getString(R.string.gls_timestamp, record.time));
-            holder.details.setText(record.systolic + " / " + record.diastolic + " mmHg\n"
-                    + record.pulseRate + " /min");
+            holder.time.setText(sdf.format(record.time.getTime()));
+            holder.details.setText(record.systolic + " / " + record.diastolic + " \n"
+                    + record.pulseRate);
 
             return convertView;
         }
