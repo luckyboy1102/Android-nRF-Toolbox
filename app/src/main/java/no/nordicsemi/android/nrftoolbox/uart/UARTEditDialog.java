@@ -22,12 +22,11 @@
 
 package no.nordicsemi.android.nrftoolbox.uart;
 
-import android.app.AlertDialog;
 import android.app.Dialog;
-import android.app.DialogFragment;
-import android.content.SharedPreferences;
 import android.os.Bundle;
-import android.preference.PreferenceManager;
+import android.support.annotation.NonNull;
+import android.support.v4.app.DialogFragment;
+import android.support.v7.app.AlertDialog;
 import android.text.TextUtils;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -40,45 +39,55 @@ import android.widget.CompoundButton;
 import android.widget.EditText;
 import android.widget.GridView;
 import android.widget.ImageView;
+import android.widget.RadioGroup;
 
 import no.nordicsemi.android.nrftoolbox.R;
+import no.nordicsemi.android.nrftoolbox.uart.domain.Command;
 
 public class UARTEditDialog extends DialogFragment implements View.OnClickListener, GridView.OnItemClickListener {
-	private final static String TAG = "UARTEditDialog";
 	private final static String ARG_INDEX = "index";
+	private final static String ARG_COMMAND = "command";
+	private final static String ARG_EOL = "eol";
+	private final static String ARG_ICON_INDEX = "iconIndex";
 	private int mActiveIcon;
 
 	private EditText mField;
-	private CheckBox mCheckBox;
+	private CheckBox mActiveCheckBox;
+	private RadioGroup mEOLGroup;
 	private IconAdapter mIconAdapter;
 
-	public static UARTEditDialog getInstance(final int index) {
+	public static UARTEditDialog getInstance(final int index, final Command command) {
 		final UARTEditDialog fragment = new UARTEditDialog();
 
 		final Bundle args = new Bundle();
 		args.putInt(ARG_INDEX, index);
+		args.putString(ARG_COMMAND, command.getCommand());
+		args.putInt(ARG_EOL, command.getEol().index);
+		args.putInt(ARG_ICON_INDEX, command.getIconIndex());
 		fragment.setArguments(args);
 
 		return fragment;
 	}
 
-	@Override
+	@NonNull
+    @Override
 	public Dialog onCreateDialog(final Bundle savedInstanceState) {
-		final SharedPreferences preferences = PreferenceManager.getDefaultSharedPreferences(getActivity());
 		final LayoutInflater inflater = LayoutInflater.from(getActivity());
 
 		// Read button configuration
 		final Bundle args = getArguments();
 		final int index = args.getInt(ARG_INDEX);
-		final String command = preferences.getString(UARTButtonAdapter.PREFS_BUTTON_COMMAND + index, null);
-		final boolean active = true;//preferences.getBoolean(UARTButtonAdapter.PREFS_BUTTON_ENABLED + index, false);
-		mActiveIcon = preferences.getInt(UARTButtonAdapter.PREFS_BUTTON_ICON + index, 0);
+		final String command = args.getString(ARG_COMMAND);
+		final int eol = args.getInt(ARG_EOL);
+		final int iconIndex = args.getInt(ARG_ICON_INDEX);
+		final boolean active = true; // change to active by default
+		mActiveIcon = iconIndex;
 
 		// Create view
 		final View view = inflater.inflate(R.layout.feature_uart_dialog_edit, null);
 		final EditText field = mField = (EditText) view.findViewById(R.id.field);
 		final GridView grid = (GridView) view.findViewById(R.id.grid);
-		final CheckBox checkBox = mCheckBox = (CheckBox) view.findViewById(R.id.active);
+		final CheckBox checkBox = mActiveCheckBox = (CheckBox) view.findViewById(R.id.active);
 		checkBox.setOnCheckedChangeListener(new CheckBox.OnCheckedChangeListener() {
 			@Override
 			public void onCheckedChanged(final CompoundButton buttonView, final boolean isChecked) {
@@ -88,6 +97,20 @@ public class UARTEditDialog extends DialogFragment implements View.OnClickListen
 					mIconAdapter.notifyDataSetChanged();
 			}
 		});
+
+		final RadioGroup eolGroup = mEOLGroup = (RadioGroup) view.findViewById(R.id.uart_eol);
+		switch (Command.Eol.values()[eol]) {
+			case CR_LF:
+				eolGroup.check(R.id.uart_eol_cr_lf);
+				break;
+			case CR:
+				eolGroup.check(R.id.uart_eol_cr);
+				break;
+			case LF:
+			default:
+				eolGroup.check(R.id.uart_eol_lf);
+				break;
+		}
 
 		field.setText(command);
 		field.setEnabled(active);
@@ -106,28 +129,30 @@ public class UARTEditDialog extends DialogFragment implements View.OnClickListen
 
 	@Override
 	public void onClick(final View v) {
-		final boolean active = mCheckBox.isChecked();
+		final boolean active = mActiveCheckBox.isChecked();
 		final String command = mField.getText().toString();
-		if (active && TextUtils.isEmpty(command)) {
-			mField.setError(getString(R.string.uart_edit_command_error));
-			return;
+		int eol;
+
+		switch (mEOLGroup.getCheckedRadioButtonId()) {
+			case R.id.uart_eol_cr_lf:
+				eol = Command.Eol.CR_LF.index;
+				break;
+			case R.id.uart_eol_cr:
+				eol = Command.Eol.CR.index;
+				break;
+			case R.id.uart_eol_lf:
+			default:
+				eol = Command.Eol.LF.index;
+				break;
 		}
-		mField.setError(null);
 
 		// Save values
 		final Bundle args = getArguments();
 		final int index = args.getInt(ARG_INDEX);
 
-		final SharedPreferences preferences = PreferenceManager.getDefaultSharedPreferences(getActivity());
-		final SharedPreferences.Editor editor = preferences.edit();
-		editor.putString(UARTButtonAdapter.PREFS_BUTTON_COMMAND + index, command);
-		editor.putBoolean(UARTButtonAdapter.PREFS_BUTTON_ENABLED + index, active);
-		editor.putInt(UARTButtonAdapter.PREFS_BUTTON_ICON + index, mActiveIcon);
-		editor.apply();
-
 		dismiss();
-		final UARTControlFragment parent = (UARTControlFragment) getParentFragment();
-		parent.onConfigurationChanged();
+		final UARTActivity parent = (UARTActivity) getActivity();
+		parent.onCommandChanged(index, command, active, eol, mActiveIcon);
 	}
 
 	@Override
@@ -162,9 +187,8 @@ public class UARTEditDialog extends DialogFragment implements View.OnClickListen
 			}
 			final ImageView image = (ImageView) view;
 			image.setImageLevel(position);
-			image.setActivated(position == mActiveIcon && mCheckBox.isChecked());
+			image.setActivated(position == mActiveIcon && mActiveCheckBox.isChecked());
 			return view;
 		}
-
 	}
 }

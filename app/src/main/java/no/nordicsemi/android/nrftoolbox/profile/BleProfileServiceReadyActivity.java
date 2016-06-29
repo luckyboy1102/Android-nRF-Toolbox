@@ -36,8 +36,10 @@ import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.IBinder;
+import android.support.annotation.NonNull;
 import android.support.v4.content.LocalBroadcastManager;
-import android.support.v7.app.ActionBarActivity;
+import android.support.v7.app.AppCompatActivity;
+import android.support.v7.widget.Toolbar;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
@@ -67,7 +69,7 @@ import no.nordicsemi.android.nrftoolbox.utility.DebugLogger;
  * listens for it. When entering back to the activity, activity will to bind to the service and refresh UI.
  * </p>
  */
-public abstract class BleProfileServiceReadyActivity<E extends BleProfileService.LocalBinder> extends ActionBarActivity implements
+public abstract class BleProfileServiceReadyActivity<E extends BleProfileService.LocalBinder> extends AppCompatActivity implements
 		ScannerFragment.OnDeviceSelectedListener, BleManagerCallbacks {
 	private static final String TAG = "BleProfileServiceReadyActivity";
 
@@ -213,6 +215,11 @@ public abstract class BleProfileServiceReadyActivity<E extends BleProfileService
 		 */
 		onInitialize(savedInstanceState);
 		onCreateView(savedInstanceState);
+
+        final Toolbar toolbar = (Toolbar) findViewById(R.id.toolbar_actionbar);
+        setSupportActionBar(toolbar);
+
+		setUpView();
 		onViewCreated(savedInstanceState);
 
 		LocalBroadcastManager.getInstance(this).registerReceiver(mCommonBroadcastReceiver, makeIntentFilter());
@@ -326,7 +333,14 @@ public abstract class BleProfileServiceReadyActivity<E extends BleProfileService
 	 *
 	 * @param savedInstanceState contains the data it most recently supplied in {@link #onSaveInstanceState(Bundle)}. Note: <b>Otherwise it is null</b>.
 	 */
-	protected final void onViewCreated(final Bundle savedInstanceState) {
+	protected void onViewCreated(final Bundle savedInstanceState) {
+		// empty default implementation
+	}
+
+	/**
+	 * Called after the view and the toolbar has been created.
+	 */
+	protected final void setUpView() {
 		// set GUI
 		getSupportActionBar().setDisplayHomeAsUpEnabled(true);
 		mConnectButton = (Button) findViewById(R.id.action_connect);
@@ -343,7 +357,7 @@ public abstract class BleProfileServiceReadyActivity<E extends BleProfileService
 	}
 
 	@Override
-	protected void onRestoreInstanceState(final Bundle savedInstanceState) {
+	protected void onRestoreInstanceState(@NonNull final Bundle savedInstanceState) {
 		super.onRestoreInstanceState(savedInstanceState);
 		mDeviceName = savedInstanceState.getString(DEVICE_NAME);
 	}
@@ -374,7 +388,7 @@ public abstract class BleProfileServiceReadyActivity<E extends BleProfileService
 				break;
 			case R.id.action_about:
 				final AppHelpFragment fragment = AppHelpFragment.getInstance(getAboutTextId());
-				fragment.show(getFragmentManager(), "help_fragment");
+				fragment.show(getSupportFragmentManager(), "help_fragment");
 				break;
 			default:
 				return onOptionsItemSelected(id);
@@ -389,10 +403,9 @@ public abstract class BleProfileServiceReadyActivity<E extends BleProfileService
 		if (isBLEEnabled()) {
 			if (mService == null) {
 				setDefaultUI();
-				showDeviceScanningDialog(getFilterUUID(), isDiscoverableRequired());
+				showDeviceScanningDialog(getFilterUUID());
 			} else {
 				Logger.v(mLogSession, "Disconnecting...");
-				onDeviceDisconnecting();
 				mService.disconnect();
 			}
 		} else {
@@ -428,7 +441,8 @@ public abstract class BleProfileServiceReadyActivity<E extends BleProfileService
 				mLogSession = LocalLogSession.newSession(getApplicationContext(), getLocalAuthorityLogger(), device.getAddress(), name);
 			}
 		}
-		mDeviceNameView.setText(mDeviceName = name);
+		mDeviceName = name;
+		mDeviceNameView.setText(name != null ? name : getString(R.string.not_available));
 		mConnectButton.setText(R.string.action_disconnect);
 
 		// The device may not be in the range but the service will try to connect to it if it reach it
@@ -625,25 +639,15 @@ public abstract class BleProfileServiceReadyActivity<E extends BleProfileService
 	protected abstract UUID getFilterUUID();
 
 	/**
-	 * Whether the scanner must search only for devices with GENERAL_DISCOVERABLE or LIMITER_DISCOVERABLE flag set.
-	 *
-	 * @return <code>true</code> if devices must have one of those flags set in their advertisement packets
-	 */
-	protected boolean isDiscoverableRequired() {
-		return true;
-	}
-
-	/**
 	 * Shows the scanner fragment.
 	 *
 	 * @param filter               the UUID filter used to filter out available devices. The fragment will always show all bonded devices as there is no information about their
 	 *                             services
-	 * @param discoverableRequired <code>true</code> if devices must have GENERAL_DISCOVERABLE or LIMITED_DISCOVERABLE flags set in their advertisement packet
 	 * @see #getFilterUUID()
 	 */
-	private void showDeviceScanningDialog(final UUID filter, final boolean discoverableRequired) {
-		final ScannerFragment dialog = ScannerFragment.getInstance(BleProfileServiceReadyActivity.this, filter, discoverableRequired);
-		dialog.show(getFragmentManager(), "scan_fragment");
+	private void showDeviceScanningDialog(final UUID filter) {
+		final ScannerFragment dialog = ScannerFragment.getInstance(filter);
+		dialog.show(getSupportFragmentManager(), "scan_fragment");
 	}
 
 	/**

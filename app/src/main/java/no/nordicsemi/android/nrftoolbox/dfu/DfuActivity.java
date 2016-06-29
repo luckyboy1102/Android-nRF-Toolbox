@@ -21,34 +21,33 @@
  */
 package no.nordicsemi.android.nrftoolbox.dfu;
 
+import android.Manifest;
 import android.app.ActivityManager;
 import android.app.ActivityManager.RunningServiceInfo;
-import android.app.AlertDialog;
-import android.app.FragmentManager;
 import android.app.LoaderManager.LoaderCallbacks;
 import android.app.NotificationManager;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothManager;
-import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.CursorLoader;
 import android.content.DialogInterface;
 import android.content.Intent;
-import android.content.IntentFilter;
 import android.content.Loader;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.database.Cursor;
 import android.net.Uri;
 import android.os.Bundle;
-import android.os.Environment;
 import android.os.Handler;
 import android.preference.PreferenceManager;
 import android.provider.MediaStore;
+import android.support.v4.app.ActivityCompat;
+import android.support.v4.app.DialogFragment;
 import android.support.v4.content.LocalBroadcastManager;
-import android.support.v7.app.ActionBar;
-import android.support.v7.app.ActionBarActivity;
+import android.support.v7.app.AlertDialog;
+import android.support.v7.app.AppCompatActivity;
+import android.support.v7.widget.Toolbar;
 import android.text.TextUtils;
 import android.view.Menu;
 import android.view.MenuItem;
@@ -61,12 +60,13 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import java.io.File;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.io.InputStream;
 
-import no.nordicsemi.android.error.GattError;
+import no.nordicsemi.android.dfu.DfuProgressListener;
+import no.nordicsemi.android.dfu.DfuProgressListenerAdapter;
+import no.nordicsemi.android.dfu.DfuServiceInitiator;
+import no.nordicsemi.android.dfu.DfuServiceListenerHelper;
 import no.nordicsemi.android.nrftoolbox.AppHelpFragment;
+import no.nordicsemi.android.nrftoolbox.PermissionRationaleFragment;
 import no.nordicsemi.android.nrftoolbox.R;
 import no.nordicsemi.android.nrftoolbox.dfu.adapter.FileBrowserAppsAdapter;
 import no.nordicsemi.android.nrftoolbox.dfu.fragment.UploadCancelFragment;
@@ -74,19 +74,16 @@ import no.nordicsemi.android.nrftoolbox.dfu.fragment.ZipInfoFragment;
 import no.nordicsemi.android.nrftoolbox.dfu.settings.SettingsActivity;
 import no.nordicsemi.android.nrftoolbox.dfu.settings.SettingsFragment;
 import no.nordicsemi.android.nrftoolbox.scanner.ScannerFragment;
-import no.nordicsemi.android.nrftoolbox.utility.DebugLogger;
+import no.nordicsemi.android.nrftoolbox.utility.FileHelper;
 
 /**
  * DfuActivity is the main DFU activity It implements DFUManagerCallbacks to receive callbacks from DFUManager class It implements
  * DeviceScannerFragment.OnDeviceSelectedListener callback to receive callback when device is selected from scanning dialog The activity supports portrait and
  * landscape orientations
  */
-public class DfuActivity extends ActionBarActivity implements LoaderCallbacks<Cursor>, ScannerFragment.OnDeviceSelectedListener,
-		UploadCancelFragment.CancelFragmentListener {
+public class DfuActivity extends AppCompatActivity implements LoaderCallbacks<Cursor>, ScannerFragment.OnDeviceSelectedListener,
+		UploadCancelFragment.CancelFragmentListener, PermissionRationaleFragment.PermissionDialogListener {
 	private static final String TAG = "DfuActivity";
-
-	private static final String PREFS_SAMPLES_VERSION = "no.nordicsemi.android.nrftoolbox.dfu.PREFS_SAMPLES_VERSION";
-	private static final int CURRENT_SAMPLES_VERSION = 3;
 
 	private static final String PREFS_DEVICE_NAME = "no.nordicsemi.android.nrftoolbox.dfu.PREFS_DEVICE_NAME";
 	private static final String PREFS_FILE_NAME = "no.nordicsemi.android.nrftoolbox.dfu.PREFS_FILE_NAME";
@@ -104,6 +101,7 @@ public class DfuActivity extends ActionBarActivity implements LoaderCallbacks<Cu
 
 	private static final String EXTRA_URI = "uri";
 
+	private static final int PERMISSION_REQ = 25;
 	private static final int ENABLE_BT_REQ = 0;
 	private static final int SELECT_FILE_REQ = 1;
 	private static final int SELECT_INIT_FILE_REQ = 2;
@@ -128,31 +126,93 @@ public class DfuActivity extends ActionBarActivity implements LoaderCallbacks<Cu
 	private int mFileTypeTmp; // This value is being used when user is selecting a file not to overwrite the old value (in case he/she will cancel selecting file)
 	private boolean mStatusOk;
 
-	private final BroadcastReceiver mDfuUpdateReceiver = new BroadcastReceiver() {
+	private final DfuProgressListener mDfuProgressListener = new DfuProgressListenerAdapter() {
 		@Override
-		public void onReceive(final Context context, final Intent intent) {
-			// DFU is in progress or an error occurred
-			final String action = intent.getAction();
+		public void onDeviceConnecting(final String deviceAddress) {
+			mProgressBar.setIndeterminate(true);
+			mTextPercentage.setText(R.string.dfu_status_connecting);
+		}
 
-			if (DfuService.BROADCAST_PROGRESS.equals(action)) {
-				final int progress = intent.getIntExtra(DfuService.EXTRA_DATA, 0);
-				final int currentPart = intent.getIntExtra(DfuService.EXTRA_PART_CURRENT, 1);
-				final int totalParts = intent.getIntExtra(DfuService.EXTRA_PARTS_TOTAL, 1);
-				updateProgressBar(progress, currentPart, totalParts, false);
-			} else if (DfuService.BROADCAST_ERROR.equals(action)) {
-				final int error = intent.getIntExtra(DfuService.EXTRA_DATA, 0);
-				updateProgressBar(error, 0, 0, true);
+		@Override
+		public void onDfuProcessStarting(final String deviceAddress) {
+			mProgressBar.setIndeterminate(true);
+			mTextPercentage.setText(R.string.dfu_status_starting);
+		}
 
-				// We have to wait a bit before canceling notification. This is called before DfuService creates the last notification.
-				new Handler().postDelayed(new Runnable() {
-					@Override
-					public void run() {
-						// if this activity is still open and upload process was completed, cancel the notification
-						final NotificationManager manager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
-						manager.cancel(DfuService.NOTIFICATION_ID);
-					}
-				}, 200);
-			}
+		@Override
+		public void onEnablingDfuMode(final String deviceAddress) {
+			mProgressBar.setIndeterminate(true);
+			mTextPercentage.setText(R.string.dfu_status_switching_to_dfu);
+		}
+
+		@Override
+		public void onFirmwareValidating(final String deviceAddress) {
+			mProgressBar.setIndeterminate(true);
+			mTextPercentage.setText(R.string.dfu_status_validating);
+		}
+
+		@Override
+		public void onDeviceDisconnecting(final String deviceAddress) {
+			mProgressBar.setIndeterminate(true);
+			mTextPercentage.setText(R.string.dfu_status_disconnecting);
+		}
+
+		@Override
+		public void onDfuCompleted(final String deviceAddress) {
+			mTextPercentage.setText(R.string.dfu_status_completed);
+			// let's wait a bit until we cancel the notification. When canceled immediately it will be recreated by service again.
+			new Handler().postDelayed(new Runnable() {
+				@Override
+				public void run() {
+					onTransferCompleted();
+
+					// if this activity is still open and upload process was completed, cancel the notification
+					final NotificationManager manager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+					manager.cancel(DfuService.NOTIFICATION_ID);
+				}
+			}, 200);
+		}
+
+		@Override
+		public void onDfuAborted(final String deviceAddress) {
+			mTextPercentage.setText(R.string.dfu_status_aborted);
+			// let's wait a bit until we cancel the notification. When canceled immediately it will be recreated by service again.
+			new Handler().postDelayed(new Runnable() {
+				@Override
+				public void run() {
+					onUploadCanceled();
+
+					// if this activity is still open and upload process was completed, cancel the notification
+					final NotificationManager manager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+					manager.cancel(DfuService.NOTIFICATION_ID);
+				}
+			}, 200);
+		}
+
+		@Override
+		public void onProgressChanged(final String deviceAddress, final int percent, final float speed, final float avgSpeed, final int currentPart, final int partsTotal) {
+			mProgressBar.setIndeterminate(false);
+			mProgressBar.setProgress(percent);
+			mTextPercentage.setText(getString(R.string.dfu_uploading_percentage, percent));
+			if (partsTotal > 1)
+				mTextUploading.setText(getString(R.string.dfu_status_uploading_part, currentPart, partsTotal));
+			else
+				mTextUploading.setText(R.string.dfu_status_uploading);
+		}
+
+		@Override
+		public void onError(final String deviceAddress, final int error, final int errorType, final String message) {
+			showErrorMessage(message);
+
+			// We have to wait a bit before canceling notification. This is called before DfuService creates the last notification.
+			new Handler().postDelayed(new Runnable() {
+				@Override
+				public void run() {
+					// if this activity is still open and upload process was completed, cancel the notification
+					final NotificationManager manager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+					manager.cancel(DfuService.NOTIFICATION_ID);
+				}
+			}, 200);
 		}
 	};
 
@@ -166,7 +226,15 @@ public class DfuActivity extends ActionBarActivity implements LoaderCallbacks<Cu
 		}
 		setGUI();
 
-		ensureSamplesExist();
+		// Try to create sample files
+		if (FileHelper.newSamplesAvailable(this)) {
+			if (ActivityCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED) {
+				FileHelper.createSamples(this);
+			} else {
+				final DialogFragment dialog = PermissionRationaleFragment.getInstance(R.string.permission_sd_text, Manifest.permission.WRITE_EXTERNAL_STORAGE);
+				dialog.show(getSupportFragmentManager(), null);
+			}
+		}
 
 		// restore saved state
 		mFileType = DfuService.TYPE_AUTO; // Default
@@ -197,8 +265,9 @@ public class DfuActivity extends ActionBarActivity implements LoaderCallbacks<Cu
 	}
 
 	private void setGUI() {
-		final ActionBar actionBar = getSupportActionBar();
-		actionBar.setDisplayHomeAsUpEnabled(true);
+        final Toolbar toolbar = (Toolbar) findViewById(R.id.toolbar_actionbar);
+        setSupportActionBar(toolbar);
+		getSupportActionBar().setDisplayHomeAsUpEnabled(true);
 
 		mDeviceNameView = (TextView) findViewById(R.id.device_name);
 		mFileNameView = (TextView) findViewById(R.id.file_name);
@@ -230,25 +299,35 @@ public class DfuActivity extends ActionBarActivity implements LoaderCallbacks<Cu
 	protected void onResume() {
 		super.onResume();
 
-		// We are using LocalBroadcastReceiver instead of normal BroadcastReceiver for optimization purposes
-		final LocalBroadcastManager broadcastManager = LocalBroadcastManager.getInstance(this);
-		broadcastManager.registerReceiver(mDfuUpdateReceiver, makeDfuUpdateIntentFilter());
+		DfuServiceListenerHelper.registerProgressListener(this, mDfuProgressListener);
 	}
 
 	@Override
 	protected void onPause() {
 		super.onPause();
 
-		final LocalBroadcastManager broadcastManager = LocalBroadcastManager.getInstance(this);
-		broadcastManager.unregisterReceiver(mDfuUpdateReceiver);
+		DfuServiceListenerHelper.unregisterProgressListener(this, mDfuProgressListener);
 	}
 
-	private static IntentFilter makeDfuUpdateIntentFilter() {
-		final IntentFilter intentFilter = new IntentFilter();
-		intentFilter.addAction(DfuService.BROADCAST_PROGRESS);
-		intentFilter.addAction(DfuService.BROADCAST_ERROR);
-		intentFilter.addAction(DfuService.BROADCAST_LOG);
-		return intentFilter;
+	@Override
+	public void onRequestPermission(final String permission) {
+		ActivityCompat.requestPermissions(this, new String[] { permission }, PERMISSION_REQ);
+	}
+
+	@Override
+	public void onRequestPermissionsResult(final int requestCode, final String[] permissions, final int[] grantResults) {
+		super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+		switch (requestCode) {
+			case PERMISSION_REQ: {
+				if (grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+					// We have been granted the Manifest.permission.WRITE_EXTERNAL_STORAGE permission. Now we may proceed with exporting.
+					FileHelper.createSamples(this);
+				} else {
+					Toast.makeText(this, R.string.no_required_permission, Toast.LENGTH_SHORT).show();
+				}
+				break;
+			}
+		}
 	}
 
 	private void isBLESupported() {
@@ -270,156 +349,8 @@ public class DfuActivity extends ActionBarActivity implements LoaderCallbacks<Cu
 	}
 
 	private void showDeviceScanningDialog() {
-		final FragmentManager fm = getFragmentManager();
-		final ScannerFragment dialog = ScannerFragment.getInstance(DfuActivity.this, null, false); // Device that is advertising directly does not have the GENERAL_DISCOVERABLE nor LIMITED_DISCOVERABLE flag set.
-		dialog.show(fm, "scan_fragment");
-	}
-
-	private void ensureSamplesExist() {
-		final SharedPreferences preferences = PreferenceManager.getDefaultSharedPreferences(this);
-		final int version = preferences.getInt(PREFS_SAMPLES_VERSION, 0);
-		if (version == CURRENT_SAMPLES_VERSION)
-			return;
-
-		/*
-		 * Copy example HEX files to the external storage. Files will be copied if the DFU Applications folder is missing
-		 */
-		final File root = new File(Environment.getExternalStorageDirectory(), "Nordic Semiconductor");
-		if (!root.exists()) {
-			root.mkdir();
-		}
-		final File board = new File(root, "Board");
-		if (!board.exists()) {
-			board.mkdir();
-		}
-		final File nrf6310 = new File(board, "nrf6310");
-		if (!nrf6310.exists()) {
-			nrf6310.mkdir();
-		}
-		final File pca10028 = new File(board, "pca10028");
-		if (!pca10028.exists()) {
-			pca10028.mkdir();
-		}
-
-		// Remove old files. Those will be moved to a new folder structure
-		new File(root, "ble_app_hrs_s110_v6_0_0.hex").delete();
-		new File(root, "ble_app_rscs_s110_v6_0_0.hex").delete();
-		new File(root, "ble_app_hrs_s110_v7_0_0.hex").delete();
-		new File(root, "ble_app_rscs_s110_v7_0_0.hex").delete();
-		new File(root, "blinky_arm_s110_v7_0_0.hex").delete();
-		new File(root, "dfu_2_0.bat").delete(); // This file has been migrated to 3.0
-		new File(root, "dfu_3_0.bat").delete(); // This file has been migrated to 3.1
-		new File(root, "dfu_2_0.sh").delete(); // This file has been migrated to 3.0
-		new File(root, "dfu_3_0.sh").delete(); // This file has been migrated to 3.1
-		new File(root, "README.txt").delete(); // This file has been modified to match v.3.0+
-
-		boolean oldCopied = false;
-		boolean newCopied = false;
-
-		// nrf6310 files
-		File f = new File(nrf6310, "ble_app_hrs_s110_v6_0_0.hex");
-		if (!f.exists()) {
-			copyRawResource(R.raw.ble_app_hrs_s110_v6_0_0, f);
-			oldCopied = true;
-		}
-		f = new File(nrf6310, "ble_app_rscs_s110_v6_0_0.hex");
-		if (!f.exists()) {
-			copyRawResource(R.raw.ble_app_rscs_s110_v6_0_0, f);
-			oldCopied = true;
-		}
-		f = new File(nrf6310, "ble_app_hrs_s110_v7_0_0.hex");
-		if (!f.exists()) {
-			copyRawResource(R.raw.ble_app_hrs_s110_v7_0_0, f);
-			oldCopied = true;
-		}
-		f = new File(nrf6310, "ble_app_rscs_s110_v7_0_0.hex");
-		if (!f.exists()) {
-			copyRawResource(R.raw.ble_app_rscs_s110_v7_0_0, f);
-			oldCopied = true;
-		}
-		f = new File(nrf6310, "blinky_arm_s110_v7_0_0.hex");
-		if (!f.exists()) {
-			copyRawResource(R.raw.blinky_arm_s110_v7_0_0, f);
-			oldCopied = true;
-		}
-		// PCA10028 files
-		f = new File(pca10028, "blinky_s110_v7_1_0.hex");
-		if (!f.exists()) {
-			copyRawResource(R.raw.blinky_s110_v7_1_0, f);
-			oldCopied = true;
-		}
-		f = new File(pca10028, "blinky_s110_v7_1_0_ext_init.dat");
-		if (!f.exists()) {
-			copyRawResource(R.raw.blinky_s110_v7_1_0_ext_init, f);
-			oldCopied = true;
-		}
-		f = new File(pca10028, "ble_app_hrs_dfu_s110_v7_1_0.hex");
-		if (!f.exists()) {
-			copyRawResource(R.raw.ble_app_hrs_dfu_s110_v7_1_0, f);
-			oldCopied = true;
-		}
-		f = new File(pca10028, "ble_app_hrs_dfu_s110_v7_1_0_ext_init.dat");
-		if (!f.exists()) {
-			copyRawResource(R.raw.ble_app_hrs_dfu_s110_v7_1_0_ext_init, f);
-			oldCopied = true;
-		}
-		f = new File(pca10028, "ble_app_hrs_dfu_s110_v8_0_0.zip");
-		if (!f.exists()) {
-			copyRawResource(R.raw.ble_app_hrs_dfu_s110_v8_0_0, f);
-			newCopied = true;
-		}
-
-		if (oldCopied)
-			Toast.makeText(this, R.string.dfu_example_files_created, Toast.LENGTH_SHORT).show();
-		else if (newCopied)
-			Toast.makeText(this, R.string.dfu_example_new_files_created, Toast.LENGTH_SHORT).show();
-
-		// Scripts
-		newCopied = false;
-		f = new File(root, "dfu_3_1.bat");
-		if (!f.exists()) {
-			copyRawResource(R.raw.dfu_win_3_1, f);
-			newCopied = true;
-		}
-		f = new File(root, "dfu_3_1.sh");
-		if (!f.exists()) {
-			copyRawResource(R.raw.dfu_mac_3_1, f);
-			newCopied = true;
-		}
-		f = new File(root, "README.txt");
-		if (!f.exists()) {
-			copyRawResource(R.raw.readme, f);
-		}
-		if (newCopied)
-			Toast.makeText(this, R.string.dfu_scripts_created, Toast.LENGTH_SHORT).show();
-
-		// Save the current version
-		preferences.edit().putInt(PREFS_SAMPLES_VERSION, CURRENT_SAMPLES_VERSION).apply();
-	}
-
-	/**
-	 * Copies the file from res/raw with given id to given destination file. If dest does not exist it will be created.
-	 *
-	 * @param rawResId the resource id
-	 * @param dest     destination file
-	 */
-	private void copyRawResource(final int rawResId, final File dest) {
-		try {
-			final InputStream is = getResources().openRawResource(rawResId);
-			final FileOutputStream fos = new FileOutputStream(dest);
-
-			final byte[] buf = new byte[1024];
-			int read;
-			try {
-				while ((read = is.read(buf)) > 0)
-					fos.write(buf, 0, read);
-			} finally {
-				is.close();
-				fos.close();
-			}
-		} catch (final IOException e) {
-			DebugLogger.e(TAG, "Error while copying HEX file " + e.toString());
-		}
+		final ScannerFragment dialog = ScannerFragment.getInstance(null); // Device that is advertising directly does not have the GENERAL_DISCOVERABLE nor LIMITED_DISCOVERABLE flag set.
+		dialog.show(getSupportFragmentManager(), "scan_fragment");
 	}
 
 	@Override
@@ -436,7 +367,7 @@ public class DfuActivity extends ActionBarActivity implements LoaderCallbacks<Cu
 				break;
 			case R.id.action_about:
 				final AppHelpFragment fragment = AppHelpFragment.getInstance(R.string.dfu_about_text);
-				fragment.show(getFragmentManager(), "help_fragment");
+				fragment.show(getSupportFragmentManager(), "help_fragment");
 				break;
 			case R.id.action_settings:
 				final Intent intent = new Intent(this, SettingsActivity.class);
@@ -676,7 +607,7 @@ public class DfuActivity extends ActionBarActivity implements LoaderCallbacks<Cu
 			@Override
 			public void onClick(final DialogInterface dialog, final int which) {
 				final ZipInfoFragment fragment = new ZipInfoFragment();
-				fragment.show(getFragmentManager(), "help_fragment");
+				fragment.show(getSupportFragmentManager(), "help_fragment");
 			}
 		}).setNegativeButton(R.string.cancel, null).show();
 	}
@@ -743,17 +674,15 @@ public class DfuActivity extends ActionBarActivity implements LoaderCallbacks<Cu
 
 		final boolean keepBond = preferences.getBoolean(SettingsFragment.SETTINGS_KEEP_BOND, false);
 
-		final Intent service = new Intent(this, DfuService.class);
-		service.putExtra(DfuService.EXTRA_DEVICE_ADDRESS, mSelectedDevice.getAddress());
-		service.putExtra(DfuService.EXTRA_DEVICE_NAME, mSelectedDevice.getName());
-		service.putExtra(DfuService.EXTRA_FILE_MIME_TYPE, mFileType == DfuService.TYPE_AUTO ? DfuService.MIME_TYPE_ZIP : DfuService.MIME_TYPE_OCTET_STREAM);
-		service.putExtra(DfuService.EXTRA_FILE_TYPE, mFileType);
-		service.putExtra(DfuService.EXTRA_FILE_PATH, mFilePath);
-		service.putExtra(DfuService.EXTRA_FILE_URI, mFileStreamUri);
-		service.putExtra(DfuService.EXTRA_INIT_FILE_PATH, mInitFilePath);
-		service.putExtra(DfuService.EXTRA_INIT_FILE_URI, mInitFileStreamUri);
-		service.putExtra(DfuService.EXTRA_KEEP_BOND, keepBond);
-		startService(service);
+		final DfuServiceInitiator starter = new DfuServiceInitiator(mSelectedDevice.getAddress())
+				.setDeviceName(mSelectedDevice.getName())
+				.setKeepBond(keepBond);
+		if (mFileType == DfuService.TYPE_AUTO)
+			starter.setZip(mFileStreamUri, mFilePath);
+		else {
+			starter.setBinOrHex(mFileType, mFileStreamUri, mFilePath).setInitFile(mInitFileStreamUri, mInitFilePath);
+		}
+		starter.start(this, DfuService.class);
 	}
 
 	private void showUploadCancelDialog() {
@@ -763,7 +692,7 @@ public class DfuActivity extends ActionBarActivity implements LoaderCallbacks<Cu
 		manager.sendBroadcast(pauseAction);
 
 		final UploadCancelFragment fragment = UploadCancelFragment.getInstance();
-		fragment.show(getFragmentManager(), TAG);
+		fragment.show(getSupportFragmentManager(), TAG);
 	}
 
 	/**
@@ -781,78 +710,12 @@ public class DfuActivity extends ActionBarActivity implements LoaderCallbacks<Cu
 	public void onDeviceSelected(final BluetoothDevice device, final String name) {
 		mSelectedDevice = device;
 		mUploadButton.setEnabled(mStatusOk);
-		mDeviceNameView.setText(name);
+		mDeviceNameView.setText(name != null ? name : getString(R.string.not_available));
 	}
 
 	@Override
 	public void onDialogCanceled() {
 		// do nothing
-	}
-
-	private void updateProgressBar(final int progress, final int part, final int total, final boolean error) {
-		switch (progress) {
-			case DfuService.PROGRESS_CONNECTING:
-				mProgressBar.setIndeterminate(true);
-				mTextPercentage.setText(R.string.dfu_status_connecting);
-				break;
-			case DfuService.PROGRESS_STARTING:
-				mProgressBar.setIndeterminate(true);
-				mTextPercentage.setText(R.string.dfu_status_starting);
-				break;
-			case DfuService.PROGRESS_ENABLING_DFU_MODE:
-				mProgressBar.setIndeterminate(true);
-				mTextPercentage.setText(R.string.dfu_status_switching_to_dfu);
-				break;
-			case DfuService.PROGRESS_VALIDATING:
-				mProgressBar.setIndeterminate(true);
-				mTextPercentage.setText(R.string.dfu_status_validating);
-				break;
-			case DfuService.PROGRESS_DISCONNECTING:
-				mProgressBar.setIndeterminate(true);
-				mTextPercentage.setText(R.string.dfu_status_disconnecting);
-				break;
-			case DfuService.PROGRESS_COMPLETED:
-				mTextPercentage.setText(R.string.dfu_status_completed);
-				// let's wait a bit until we cancel the notification. When canceled immediately it will be recreated by service again.
-				new Handler().postDelayed(new Runnable() {
-					@Override
-					public void run() {
-						onTransferCompleted();
-
-						// if this activity is still open and upload process was completed, cancel the notification
-						final NotificationManager manager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
-						manager.cancel(DfuService.NOTIFICATION_ID);
-					}
-				}, 200);
-				break;
-			case DfuService.PROGRESS_ABORTED:
-				mTextPercentage.setText(R.string.dfu_status_aborted);
-				// let's wait a bit until we cancel the notification. When canceled immediately it will be recreated by service again.
-				new Handler().postDelayed(new Runnable() {
-					@Override
-					public void run() {
-						onUploadCanceled();
-
-						// if this activity is still open and upload process was completed, cancel the notification
-						final NotificationManager manager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
-						manager.cancel(DfuService.NOTIFICATION_ID);
-					}
-				}, 200);
-				break;
-			default:
-				mProgressBar.setIndeterminate(false);
-				if (error) {
-					showErrorMessage(progress);
-				} else {
-					mProgressBar.setProgress(progress);
-					mTextPercentage.setText(getString(R.string.progress, progress));
-					if (total > 1)
-						mTextUploading.setText(getString(R.string.dfu_status_uploading_part, part, total));
-					else
-						mTextUploading.setText(R.string.dfu_status_uploading);
-				}
-				break;
-		}
 	}
 
 	private void showProgressBar() {
@@ -884,9 +747,9 @@ public class DfuActivity extends ActionBarActivity implements LoaderCallbacks<Cu
 		mTextPercentage.setText(null);
 	}
 
-	private void showErrorMessage(final int code) {
+	private void showErrorMessage(final String message) {
 		clearUI(false);
-		showToast("Upload failed: " + GattError.parse(code) + " (" + (code & ~(DfuService.ERROR_MASK | DfuService.ERROR_REMOTE_MASK)) + ")");
+		showToast("Upload failed: " + message);
 	}
 
 	private void clearUI(final boolean clearDevice) {

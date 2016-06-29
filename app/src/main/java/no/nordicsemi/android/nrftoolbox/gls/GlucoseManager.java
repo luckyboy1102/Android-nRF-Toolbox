@@ -35,10 +35,10 @@ import java.util.Queue;
 import java.util.UUID;
 
 import no.nordicsemi.android.log.Logger;
+import no.nordicsemi.android.nrftoolbox.profile.BleManager;
 import no.nordicsemi.android.nrftoolbox.parser.GlucoseMeasurementContextParser;
 import no.nordicsemi.android.nrftoolbox.parser.GlucoseMeasurementParser;
 import no.nordicsemi.android.nrftoolbox.parser.RecordAccessControlPointParser;
-import no.nordicsemi.android.nrftoolbox.profile.BleManager;
 import no.nordicsemi.android.nrftoolbox.utility.DebugLogger;
 
 @SuppressWarnings("unused")
@@ -584,7 +584,7 @@ public class GlucoseManager extends BleManager<GlucoseManagerCallbacks> {
 	/**
 	 * Sends the request to delete all data from the device. A Record Access Control Point indication with status code ({@link #RESPONSE_SUCCESS} (or other in case of error) will be send.
 	 *
-	 * @FIXME This method is not supported by Nordic Semiconductor Glucose Service in SDK 4.4.2.
+	 * FIXME This method is not supported by Nordic Semiconductor Glucose Service in SDK 4.4.2.
 	 */
 	public void deleteAllRecords() {
 		if (mRecordAccessControlPointCharacteristic == null)

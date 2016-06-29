@@ -29,6 +29,7 @@ import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Bundle;
+import android.support.v7.widget.Toolbar;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
@@ -82,6 +83,10 @@ public abstract class BleProfileExpandableListActivity extends ExpandableListAct
 		mBleManager = initializeManager();
 		onInitialize(savedInstanceState);
 		onCreateView(savedInstanceState);
+
+        final Toolbar toolbar = (Toolbar) findViewById(R.id.toolbar_actionbar);
+        setSupportActionBar(toolbar);
+
 		onViewCreated(savedInstanceState);
 	}
 
@@ -165,7 +170,7 @@ public abstract class BleProfileExpandableListActivity extends ExpandableListAct
 				break;
 			case R.id.action_about:
 				final AppHelpFragment fragment = AppHelpFragment.getInstance(getAboutTextId());
-				fragment.show(getFragmentManager(), "help_fragment");
+				fragment.show(getSupportFragmentManager(), "help_fragment");
 				break;
 			default:
 				return onOptionsItemSelected(id);
@@ -180,7 +185,7 @@ public abstract class BleProfileExpandableListActivity extends ExpandableListAct
 		if (isBLEEnabled()) {
 			if (!mDeviceConnected) {
 				setDefaultUI();
-				showDeviceScanningDialog(getFilterUUID(), isDiscoverableRequired());
+				showDeviceScanningDialog(getFilterUUID());
 			} else {
 				mBleManager.disconnect();
 			}
@@ -217,8 +222,9 @@ public abstract class BleProfileExpandableListActivity extends ExpandableListAct
 				mLogSession = LocalLogSession.newSession(getApplicationContext(), getLocalAuthorityLogger(), device.getAddress(), name);
 			}
 		}
+		mDeviceName = name;
 		mBleManager.setLogger(mLogSession);
-		mDeviceNameView.setText(mDeviceName = name);
+		mDeviceNameView.setText(name != null ? name : getString(R.string.not_available));
 		mConnectButton.setText(R.string.action_disconnect);
 		mBleManager.connect(device);
 	}
@@ -392,28 +398,18 @@ public abstract class BleProfileExpandableListActivity extends ExpandableListAct
 	protected abstract UUID getFilterUUID();
 
 	/**
-	 * Whether the scanner must search only for devices with GENERAL_DISCOVERABLE or LIMITER_DISCOVERABLE flag set.
-	 *
-	 * @return <code>true</code> if devices must have one of those flags set in their advertisement packets
-	 */
-	protected boolean isDiscoverableRequired() {
-		return true;
-	}
-
-	/**
 	 * Shows the scanner fragment.
 	 *
 	 * @param filter               the UUID filter used to filter out available devices. The fragment will always show all bonded devices as there is no information about their
 	 *                             services
-	 * @param discoverableRequired <code>true</code> if devices must have GENERAL_DISCOVERABLE or LIMITED_DISCOVERABLE flags set in their advertisement packet
 	 * @see #getFilterUUID()
 	 */
-	private void showDeviceScanningDialog(final UUID filter, final boolean discoverableRequired) {
+	private void showDeviceScanningDialog(final UUID filter) {
 		runOnUiThread(new Runnable() {
 			@Override
 			public void run() {
-				final ScannerFragment dialog = ScannerFragment.getInstance(BleProfileExpandableListActivity.this, filter, discoverableRequired);
-				dialog.show(getFragmentManager(), "scan_fragment");
+				final ScannerFragment dialog = ScannerFragment.getInstance(filter);
+				dialog.show(getSupportFragmentManager(), "scan_fragment");
 			}
 		});
 	}

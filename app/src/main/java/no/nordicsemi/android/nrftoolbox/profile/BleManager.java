@@ -37,9 +37,9 @@ import android.os.Handler;
 import java.util.Queue;
 import java.util.UUID;
 
-import no.nordicsemi.android.error.GattError;
 import no.nordicsemi.android.log.ILogSession;
 import no.nordicsemi.android.log.Logger;
+import no.nordicsemi.android.nrftoolbox.error.GattError;
 import no.nordicsemi.android.nrftoolbox.utility.DebugLogger;
 import no.nordicsemi.android.nrftoolbox.utility.ParserUtils;
 
@@ -52,7 +52,7 @@ import no.nordicsemi.android.nrftoolbox.utility.ParserUtils;
  * leaving this to the developers.</li>
  * <li>The manager tries to read the Battery Level characteristic. No matter the result of this operation (for example the Battery Level characteristic may not have the READ property)
  * it tries to enable Battery Level notifications, to get battery updates from the device.</li>
- * <li>Afterwards, the manager initializes the device using given queue of commands. See {@link BleManagerGattCallback#initGatt(android.bluetooth.BluetoothGatt)} method for more details.</li>
+ * <li>Afterwards, the manager initializes the device using given queue of commands. See {@link BleManagerGattCallback#initGatt(BluetoothGatt)} method for more details.</li>
  * <li>When initialization complete, the {@link BleManagerCallbacks#onDeviceReady()} callback is called.</li>
  * </ol>The manager also is responsible for parsing the Battery Level values and calling {@link BleManagerCallbacks#onBatteryValueReceived(int)} method.</p>
  * <p>Events from all profiles are being logged into the nRF Logger application,
@@ -204,15 +204,19 @@ public abstract class BleManager<E extends BleManagerCallbacks> {
 
 	/**
 	 * Disconnects from the device. Does nothing if not connected.
+	 * @return true if device is to be disconnected. False if it was already disconnected.
 	 */
-	public void disconnect() {
+	public boolean disconnect() {
 		mUserDisconnected = true;
 
 		if (mConnected && mBluetoothGatt != null) {
 			Logger.v(mLogSession, "Disconnecting...");
+			mCallbacks.onDeviceDisconnecting();
 			Logger.d(mLogSession, "gatt.disconnect()");
 			mBluetoothGatt.disconnect();
+			return true;
 		}
+		return false;
 	}
 
 	/**
@@ -336,6 +340,7 @@ public abstract class BleManager<E extends BleManagerCallbacks> {
 		if ((properties & BluetoothGattCharacteristic.PROPERTY_NOTIFY) == 0)
 			return false;
 
+		Logger.d(mLogSession, "gatt.setCharacteristicNotification(" + characteristic.getUuid() + ", true)");
 		gatt.setCharacteristicNotification(characteristic, true);
 		final BluetoothGattDescriptor descriptor = characteristic.getDescriptor(CLIENT_CHARACTERISTIC_CONFIG_DESCRIPTOR_UUID);
 		if (descriptor != null) {
@@ -362,6 +367,7 @@ public abstract class BleManager<E extends BleManagerCallbacks> {
 		if ((properties & BluetoothGattCharacteristic.PROPERTY_INDICATE) == 0)
 			return false;
 
+		Logger.d(mLogSession, "gatt.setCharacteristicNotification(" + characteristic.getUuid() + ", true)");
 		gatt.setCharacteristicNotification(characteristic, true);
 		final BluetoothGattDescriptor descriptor = characteristic.getDescriptor(CLIENT_CHARACTERISTIC_CONFIG_DESCRIPTOR_UUID);
 		if (descriptor != null) {
@@ -410,7 +416,7 @@ public abstract class BleManager<E extends BleManagerCallbacks> {
 		if ((properties & (BluetoothGattCharacteristic.PROPERTY_WRITE | BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE)) == 0)
 			return false;
 
-		Logger.v(mLogSession, "Writing characteristic " + characteristic.getUuid());
+		Logger.v(mLogSession, "Writing characteristic " + characteristic.getUuid() + " (" + getWriteType(characteristic.getWriteType()) + ")");
 		Logger.d(mLogSession, "gatt.writeCharacteristic(" + characteristic.getUuid() + ")");
 		return gatt.writeCharacteristic(characteristic);
 	}
@@ -618,7 +624,7 @@ public abstract class BleManager<E extends BleManagerCallbacks> {
 
 		@Override
 		public final void onConnectionStateChange(final BluetoothGatt gatt, final int status, final int newState) {
-			Logger.v(mLogSession, "[Callback] Connection state changed with status: " + status + " and new state: " + newState + " (" + stateToString(newState) + ")");
+			Logger.d(mLogSession, "[Callback] Connection state changed with status: " + status + " and new state: " + newState + " (" + stateToString(newState) + ")");
 
 			if (status == BluetoothGatt.GATT_SUCCESS && newState == BluetoothProfile.STATE_CONNECTED) {
 				// Notify the parent activity/service
@@ -824,7 +830,7 @@ public abstract class BleManager<E extends BleManagerCallbacks> {
 			final Queue<Request> requests = mInitQueue;
 
 			// Get the first request from the queue
-			final Request request = requests.poll();
+			final Request request = requests != null ? requests.poll() : null;
 
 			// Are we done?
 			if (request == null) {
@@ -856,24 +862,6 @@ public abstract class BleManager<E extends BleManagerCallbacks> {
 				}
 			}
 		}
-
-		/**
-		 * Converts the connection state to String value
-		 * @param state the connection state
-		 * @return state as String
-		 */
-		private String stateToString(final int state) {
-			switch (state) {
-				case BluetoothProfile.STATE_CONNECTED:
-					return "CONNECTED";
-				case BluetoothProfile.STATE_CONNECTING:
-					return "CONNECTING";
-				case BluetoothProfile.STATE_DISCONNECTING:
-					return "DISCONNECTING";
-				default:
-					return "DISCONNECTED";
-			}
-		}
 	}
 
 	private static final int PAIRING_VARIANT_PIN = 0;
@@ -884,7 +872,7 @@ public abstract class BleManager<E extends BleManagerCallbacks> {
 	private static final int PAIRING_VARIANT_DISPLAY_PIN = 5;
 	private static final int PAIRING_VARIANT_OOB_CONSENT = 6;
 
-	private String pairingVariantToString(final int variant) {
+	protected String pairingVariantToString(final int variant) {
 		switch (variant) {
 			case PAIRING_VARIANT_PIN:
 				return "PAIRING_VARIANT_PIN";
@@ -905,7 +893,7 @@ public abstract class BleManager<E extends BleManagerCallbacks> {
 		}
 	}
 
-	private String bondStateToString(final int state) {
+	protected String bondStateToString(final int state) {
 		switch (state) {
 			case BluetoothDevice.BOND_NONE:
 				return "BOND_NONE";
@@ -915,6 +903,37 @@ public abstract class BleManager<E extends BleManagerCallbacks> {
 				return "BOND_BONDED";
 			default:
 				return "UNKNOWN";
+		}
+	}
+
+	protected String getWriteType(final int type) {
+		switch (type) {
+			case BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT:
+				return "WRITE REQUEST";
+			case BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE:
+				return "WRITE COMMAND";
+			case BluetoothGattCharacteristic.WRITE_TYPE_SIGNED:
+				return "WRITE SIGNED";
+			default:
+				return "UNKNOWN: " + type;
+		}
+	}
+
+	/**
+	 * Converts the connection state to String value
+	 * @param state the connection state
+	 * @return state as String
+	 */
+	protected String stateToString(final int state) {
+		switch (state) {
+			case BluetoothProfile.STATE_CONNECTED:
+				return "CONNECTED";
+			case BluetoothProfile.STATE_CONNECTING:
+				return "CONNECTING";
+			case BluetoothProfile.STATE_DISCONNECTING:
+				return "DISCONNECTING";
+			default:
+				return "DISCONNECTED";
 		}
 	}
 }
