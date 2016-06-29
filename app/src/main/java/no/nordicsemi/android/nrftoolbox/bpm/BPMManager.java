@@ -435,7 +435,7 @@ public class BPMManager extends BleManager<BPMManagerCallbacks> {
 		writeCharacteristic(characteristic);
 	}
 
-	public void getSpecificRecord(Date date) {
+	public void getSpecificRecord(Date date, boolean greater) {
 		if (mRecordAccessControlPointCharacteristic == null)
 			return;
 
@@ -462,7 +462,7 @@ public class BPMManager extends BleManager<BPMManagerCallbacks> {
 		array[6] = Integer.parseInt(Integer.toHexString(0), 16);
 
 		final BluetoothGattCharacteristic characteristic = mRecordAccessControlPointCharacteristic;
-		setOpCodeFilter(characteristic, OP_CODE_REPORT_STORED_RECORDS, OPERATOR_GREATER_THEN_OR_EQUAL, array);
+		setOpCodeFilter(characteristic, OP_CODE_REPORT_STORED_RECORDS, greater ? OPERATOR_GREATER_THEN_OR_EQUAL : OPERATOR_LESS_THEN_OR_EQUAL, array);
 		writeCharacteristic(characteristic);
 	}
 

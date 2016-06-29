@@ -40,5 +40,13 @@
     <item
         android:id="@+id/action_greater_than"
         android:title="Greater than" />
+
+    <item
+        android:id="@+id/action_less_than"
+        android:title="Less than" />
+
+    <item
+        android:id="@+id/action_pause"
+        android:title="Abort" />
     
 </menu>

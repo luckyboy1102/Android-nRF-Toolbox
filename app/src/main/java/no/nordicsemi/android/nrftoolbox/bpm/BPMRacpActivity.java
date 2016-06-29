@@ -138,9 +138,20 @@ public class BPMRacpActivity extends BleProfileActivity implements PopupMenu.OnM
                 new DateTimePicker(this, new DateTimePicker.OnDateSetListener() {
                     @Override
                     public void onDateSet(Date date) {
-                        mBPMManager.getSpecificRecord(date);
+                        mBPMManager.getSpecificRecord(date, true);
                     }
                 }).show();
+                break;
+            case R.id.action_less_than:
+                new DateTimePicker(this, new DateTimePicker.OnDateSetListener() {
+                    @Override
+                    public void onDateSet(Date date) {
+                        mBPMManager.getSpecificRecord(date, false);
+                    }
+                }).show();
+                break;
+            case R.id.action_pause:
+                mBPMManager.abort();
                 break;
         }
         return true;
