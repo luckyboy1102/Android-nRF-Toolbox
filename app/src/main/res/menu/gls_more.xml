@@ -46,7 +46,15 @@
         android:title="Less than" />
 
     <item
+        android:id="@+id/action_greater_than_seq"
+        android:title="Greater than seq" />
+
+    <item
+        android:id="@+id/action_less_than_seq"
+        android:title="Less than seq" />
+
+    <item
         android:id="@+id/action_pause"
         android:title="Abort" />
-    
+
 </menu>

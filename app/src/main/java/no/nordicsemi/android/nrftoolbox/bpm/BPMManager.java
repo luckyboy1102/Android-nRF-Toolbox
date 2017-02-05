@@ -450,19 +450,29 @@ public class BPMManager extends BleManager<BPMManagerCallbacks> {
 		int hour = calendar.get(Calendar.HOUR_OF_DAY);
 		int min = calendar.get(Calendar.MINUTE);
 
-		String strHexYear = "0" + Integer.toHexString(year);
-
 		Integer[] array = new Integer[7];
-		array[0] = Integer.parseInt(strHexYear.substring(2), 16);
-		array[1] = Integer.parseInt(strHexYear.substring(0, 2), 16);
-		array[2] = Integer.parseInt(Integer.toHexString(month), 16);
-		array[3] = Integer.parseInt(Integer.toHexString(day), 16);
-		array[4] = Integer.parseInt(Integer.toHexString(hour), 16);
-		array[5] = Integer.parseInt(Integer.toHexString(min), 16);
-		array[6] = Integer.parseInt(Integer.toHexString(0), 16);
+		array[0] = year & 0xff;
+		array[1] = (year >> 8) & 0xFF;
+		array[2] = month & 0xff;
+		array[3] = day & 0xff;
+		array[4] = hour & 0xff;
+		array[5] = min & 0xff;
+		array[6] = 0;
 
 		final BluetoothGattCharacteristic characteristic = mRecordAccessControlPointCharacteristic;
 		setOpCodeFilter(characteristic, OP_CODE_REPORT_STORED_RECORDS, greater ? OPERATOR_GREATER_THEN_OR_EQUAL : OPERATOR_LESS_THEN_OR_EQUAL, array);
+		writeCharacteristic(characteristic);
+	}
+
+	public void getRecordsBySequence(int seq, boolean greater) {
+		if (mRecordAccessControlPointCharacteristic == null)
+			return;
+
+		clear();
+		mCallbacks.onOperationStarted();
+
+		final BluetoothGattCharacteristic characteristic = mRecordAccessControlPointCharacteristic;
+		setOpCode(characteristic, OP_CODE_REPORT_STORED_RECORDS, greater ? OPERATOR_GREATER_THEN_OR_EQUAL : OPERATOR_LESS_THEN_OR_EQUAL, seq);
 		writeCharacteristic(characteristic);
 	}
 
@@ -539,19 +549,13 @@ public class BPMManager extends BleManager<BPMManagerCallbacks> {
 		int hour = calendar.get(Calendar.HOUR_OF_DAY);
 		int min = calendar.get(Calendar.MINUTE);
 
-		String strHexYear = "0" + Integer.toHexString(year);
-
 		byte[] array = new byte[10];
-		array[0] = (byte) Integer.parseInt(strHexYear.substring(2), 16);
-		array[1] = (byte) Integer.parseInt(strHexYear.substring(0, 2), 16);
-		array[2] = (byte) Integer.parseInt(Integer.toHexString(month), 16);
-		array[3] = (byte) Integer.parseInt(Integer.toHexString(day), 16);
-		array[4] = (byte) Integer.parseInt(Integer.toHexString(hour), 16);
-		array[5] = (byte) Integer.parseInt(Integer.toHexString(min), 16);
-		array[6] = (byte) Integer.parseInt(Integer.toHexString(0), 16);
-		array[7] = (byte) Integer.parseInt(Integer.toHexString(0), 16);
-		array[8] = (byte) Integer.parseInt(Integer.toHexString(0), 16);
-		array[9] = (byte) Integer.parseInt(Integer.toHexString(0), 16);
+		array[0] = (byte) (year & 0xff);
+		array[1] = (byte) ((year >> 8) & 0xFF);
+		array[2] = (byte) (month & 0xff);
+		array[3] = (byte) (day & 0xff);
+		array[4] = (byte) (hour & 0xff);
+		array[5] = (byte) (min & 0xff);
 
 		return Request.newWriteRequest(mCurrentTimeCharacteristic, array);
 	}

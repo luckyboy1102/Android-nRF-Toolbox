@@ -21,6 +21,7 @@ import no.nordicsemi.android.nrftoolbox.profile.BleManager;
 import no.nordicsemi.android.nrftoolbox.profile.BleManagerCallbacks;
 import no.nordicsemi.android.nrftoolbox.profile.BleProfileActivity;
 import no.nordicsemi.android.nrftoolbox.widget.DateTimePicker;
+import no.nordicsemi.android.nrftoolbox.widget.NumberPickerDialog;
 
 /**
  * Created by Chen on 2016/2/23.
@@ -152,6 +153,22 @@ public class BPMRacpActivity extends BleProfileActivity implements PopupMenu.OnM
                 break;
             case R.id.action_pause:
                 mBPMManager.abort();
+                break;
+            case R.id.action_greater_than_seq:
+                new NumberPickerDialog(this, new NumberPickerDialog.OnNumberSetListener() {
+                    @Override
+                    public void onNumberSet(int number) {
+                        mBPMManager.getRecordsBySequence(number, true);
+                    }
+                }).show();
+                break;
+            case R.id.action_less_than_seq:
+                new NumberPickerDialog(this, new NumberPickerDialog.OnNumberSetListener() {
+                    @Override
+                    public void onNumberSet(int number) {
+                        mBPMManager.getRecordsBySequence(number, false);
+                    }
+                }).show();
                 break;
         }
         return true;
